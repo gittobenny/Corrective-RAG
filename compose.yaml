@@ -1,0 +1,67 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      UPLOAD_ROOT: /app/uploads
+      METADATA_DB_PATH: /app/data/documents.sqlite3
+    expose:
+      - "8787"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8787/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      UPLOAD_ROOT: /app/uploads
+      METADATA_DB_PATH: /app/data/documents.sqlite3
+    command:
+      [
+        "celery",
+        "-A",
+        "backend.celery_app.celery_app",
+        "worker",
+        "--loglevel=info",
+        "--concurrency=1",
+      ]
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  huggingface-cache:
